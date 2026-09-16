@@ -1,0 +1,47 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: ato-run-linux
+          - os: macos-latest
+            asset: ato-run-macos
+          - os: windows-latest
+            asset: ato-run-windows.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest discover -s tests -t .
+      - run: pip install pyinstaller
+      - run: pyinstaller --onefile --name ato-run ato_run.py
+      - name: Rename binary
+        shell: bash
+        run: |
+          if [ -f dist/ato-run.exe ]; then src=dist/ato-run.exe; else src=dist/ato-run; fi
+          mv "$src" "dist/${{ matrix.asset }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
