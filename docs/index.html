@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ATO Run: FedRAMP lifecycle simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#EEF1F4;--sheet:#FFFFFF;--ink:#14233A;--muted:#5A6778;--rule:#C9D1DB;--seal:#1F5FA8;--on-seal:#FFFFFF;--red:#B3261E;--amber:#8A5E0C;--green:#2E6B4F;--chip:#E1E7EE}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#0F1722;--sheet:#172231;--ink:#E4EAF1;--muted:#9AA8B8;--rule:#2C3A4D;--seal:#6FA3E0;--on-seal:#0F1722;--red:#EF7B73;--amber:#E0B25A;--green:#6FC29A;--chip:#223044}}
+:root[data-theme="dark"]{--paper:#0F1722;--sheet:#172231;--ink:#E4EAF1;--muted:#9AA8B8;--rule:#2C3A4D;--seal:#6FA3E0;--on-seal:#0F1722;--red:#EF7B73;--amber:#E0B25A;--green:#6FC29A;--chip:#223044}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:"Public Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+main{max-width:760px;margin:0 auto;padding:28px 16px 64px}
+h1{font-size:clamp(1.9rem,6vw,2.7rem);font-weight:800;letter-spacing:-.02em;line-height:1.05;margin:0 0 6px}
+.lede{color:var(--muted);margin:0 0 22px;max-width:60ch}
+ol.track{list-style:none;display:grid;grid-template-columns:repeat(5,1fr);gap:4px;padding:0;margin:0 0 14px;counter-reset:t}
+.track li{font-size:.78rem;padding-top:8px;border-top:4px solid var(--rule);color:var(--muted);counter-increment:t}
+.track li::before{content:counter(t) ". ";font-weight:600}
+.track li.done{border-color:var(--green);color:var(--ink)}
+.track li.now{border-color:var(--seal);color:var(--ink);font-weight:600}
+.meters{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
+.meter{background:var(--sheet);border:1px solid var(--rule);padding:8px 10px;border-radius:4px}
+.meter b{display:block;font-size:1.25rem;font-variant-numeric:tabular-nums}
+.meter span{font-size:.75rem;color:var(--muted)}
+.sheet{background:var(--sheet);border:1px solid var(--rule);border-left:6px solid var(--seal);padding:20px;border-radius:4px}
+.sheet h2{margin:0 0 8px;font-size:1.35rem;line-height:1.2}
+.phase{font-size:.85rem;color:var(--seal);font-weight:600;margin:0 0 4px}
+.sheet p{margin:0 0 8px;max-width:65ch}
+.choices{display:grid;gap:10px;margin-top:16px}
+button{font:inherit;cursor:pointer}
+.choice{text-align:left;background:var(--paper);color:var(--ink);border:1px solid var(--rule);border-radius:4px;padding:12px 14px}
+.choice:hover{border-color:var(--seal)}
+.choice strong{display:block}
+.choice small{color:var(--muted);display:block;margin-top:2px;font-size:.85rem}
+button:focus-visible{outline:3px solid var(--seal);outline-offset:2px}
+.feedback{margin-top:16px;padding:12px 14px;background:var(--chip);border-radius:4px}
+.feedback p{margin:0}
+.primary{background:var(--seal);color:var(--on-seal);border:0;border-radius:4px;padding:10px 16px;font-weight:600;margin-top:12px}
+.table-wrap{overflow-x:auto;margin-top:12px}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+td.name{white-space:normal;min-width:180px}
+th{font-weight:600;color:var(--muted)}
+.H{color:var(--red);font-weight:600}.M{color:var(--amber);font-weight:600}.L{color:var(--muted)}
+.late{color:var(--red);font-weight:600}
+.stamp{display:inline-block;border:4px solid var(--green);color:var(--green);font-weight:800;font-size:1.5rem;padding:2px 14px;border-radius:6px;transform:rotate(-6deg);margin:4px 0 14px;animation:stamp .45s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes stamp{from{transform:rotate(-6deg) scale(2.4);opacity:0}to{transform:rotate(-6deg) scale(1);opacity:1}}
+@media (prefers-reduced-motion:reduce){.stamp{animation:none}}
+dl.results{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;margin:12px 0}
+dl.results dt{color:var(--muted)}dl.results dd{margin:0;font-weight:600;font-variant-numeric:tabular-nums}
+.note{font-size:.8rem;color:var(--muted);margin-top:20px;max-width:65ch}
+@media (max-width:520px){.meters{grid-template-columns:repeat(2,1fr)}.track li{font-size:.66rem}}
+</style>
+</head>
+<body>
+<main>
+<h1>ATO Run</h1>
+<p class="lede">Take a SaaS product from zero to a FedRAMP authorization, then keep it through six months of continuous monitoring. Every choice costs time, money, or agency trust.</p>
+<ol class="track" id="track"></ol>
+<div class="meters" id="meters"></div>
+<section class="sheet" id="sheet" aria-live="polite"></section>
+<p class="note">Simplified training model. It reflects the 2026 split between the legacy Rev5 path and FedRAMP 20x at a high level; remediation windows use the classic 30/90/180-day timelines, rounded to months. Check fedramp.gov for current rules.</p>
+</main>
+<script>
+const PHASES=["Prepare","Document","Assess","Authorize","Monitor"];
+const SLA={H:1,M:3,L:6};
+const SEVNAME={H:"High",M:"Moderate",L:"Low"};
+const ASSESS_POOL={
+  H:["Admin console reachable without MFA","Customer data replicated outside the boundary","Critical CVE on the bastion host"],
+  M:["Audit log retention below agency requirement","Stale service accounts never disabled","FIPS-validated crypto not enforced on internal TLS","Incident response plan never tested","Configuration drift on worker nodes","No inventory of container image components"],
+  L:["Login banner missing on SSH","Asset inventory missing three hosts","Security training records incomplete","Password policy document out of date"]
+};
+const SCAN_POOL={
+  H:["Critical CVE in base container image","Management port exposed on load balancer","Remote code execution in web framework"],
+  M:["Node OS missing security patches","Weak TLS cipher enabled on ingress","Library with known CVE in API service","Outdated OpenSSL on worker nodes"],
+  L:["Security header missing on web app","Verbose error pages","Outdated package with no known exploit"]
+};
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const clamp=(n,lo,hi)=>Math.max(lo,Math.min(hi,n));
+let s;
+
+function reset(){
+  s={i:0,month:0,spent:0,quality:40,trust:60,path:null,findings:[],authorized:false,atoMonth:0,fb:null,
+     cm:{m:0,v:[],late:0,fixed:0,shipped:0,id:0,event:false}};
+  render();
+}
+function add(o){for(const k in o)s[k]+=o[k];}
+function count(sev){return s.findings.filter(f=>f.sev===sev).length;}
+
+function generateFindings(){
+  const q=clamp(s.quality,0,100);
+  const n={H:q>=75?0:q>=55?1:q>=35?2:3, M:clamp(Math.round((100-q)/12),1,6), L:clamp(Math.round((100-q)/15)+1,1,4)};
+  s.findings=[];
+  for(const sev of ["H","M","L"]){
+    const pool=[...ASSESS_POOL[sev]].sort(()=>Math.random()-.5);
+    pool.slice(0,n[sev]).forEach(name=>s.findings.push({sev,name}));
+  }
+}
+function spawn(n){
+  for(let k=0;k<n;k++){
+    const r=Math.random(), sev=r<.15?"H":r<.6?"M":"L";
+    s.cm.v.push({id:"V-"+(++s.cm.id),sev,name:pick(SCAN_POOL[sev]),age:0,late:false});
+  }
+}
+function tick(strategy){
+  const cm=s.cm, rank={H:0,M:1,L:2};
+  let closed=0;
+  if(strategy==="skip"){cm.shipped++;}
+  else{
+    cm.v.sort(strategy==="sev"?(a,b)=>rank[a.sev]-rank[b.sev]||b.age-a.age:(a,b)=>b.age-a.age);
+    closed=cm.v.splice(0,4).length; cm.fixed+=closed;
+  }
+  let newLate=0;
+  cm.v.forEach(x=>{x.age++;if(!x.late&&x.age>=SLA[x.sev]){x.late=true;newLate++;cm.late++;s.trust-=x.sev==="H"?8:3;}});
+  cm.m++; s.month++;
+  if(cm.m<6)spawn(2+Math.floor(Math.random()*3));
+  const parts=[strategy==="skip"?"Your team shipped roadmap work instead of patching.":`Closed ${closed} item${closed===1?"":"s"}.`];
+  parts.push(newLate?`${newLate} item${newLate===1?"":"s"} went past due, and the agency noticed.`:"Nothing went past due.");
+  return {msg:parts.join(" "),stay:cm.m<6};
+}
+
+function findingsTable(rows,withAge){
+  if(!rows.length)return "<p>No open items.</p>";
+  return `<div class="table-wrap"><table><thead><tr>${withAge?"<th>ID</th>":""}<th>Severity</th><th>Finding</th>${withAge?"<th>Age</th><th>Due in</th>":""}</tr></thead><tbody>${
+    rows.map(r=>`<tr>${withAge?`<td>${r.id}</td>`:""}<td class="${r.sev}">${SEVNAME[r.sev]}</td><td class="name">${r.name}</td>${
+      withAge?`<td>${r.age} mo</td><td class="${r.late?"late":""}">${r.late?"Past due":(SLA[r.sev]-r.age)+" mo"}</td>`:""}</tr>`).join("")
+  }</tbody></table></div>`;
+}
+
+const steps=[
+ {phase:0,render:()=>({title:"Your agency sponsor is waiting",
+   text:"<p>You lead platform engineering at Northwind, a SaaS provider. A federal agency wants your product at a Moderate impact level and has agreed to sponsor you. Get authorized, then keep the authorization.</p>",
+   choices:[{label:"Start the run",apply:()=>null}]})},
+
+ {phase:0,render:()=>({title:"Choose your authorization path",
+   text:"<p>Rev5 is the document-based path agencies know. FedRAMP 20x replaces narratives with Key Security Indicators backed by automated, machine-readable evidence.</p>",
+   choices:[
+    {label:"Legacy Rev5",desc:"Control-by-control narratives and sponsor-driven review. New Rev5 applications close June 11, 2027.",
+     apply:()=>{s.path="rev5";return "You picked the familiar path, but you're investing in a process FedRAMP is retiring.";}},
+    {label:"FedRAMP 20x",desc:"Key Security Indicators validated continuously against the running system.",
+     apply:()=>{s.path="20x";return "Review moves faster when evidence is automated. This path rewards cloud-native, IaC-heavy stacks and punishes manual evidence.";}}
+   ]})},
+
+ {phase:0,render:()=>({title:"Draw the authorization boundary",
+   text:"<p>Everything inside the boundary has to meet every applicable control.</p>",
+   choices:[
+    {label:"Scope only the production SaaS stack",desc:"Corporate IT stays out. Costs a month of data-flow mapping.",
+     apply:()=>{add({month:1,quality:15});return "A smaller boundary means fewer controls to prove and fewer places for the assessor to find problems.";}},
+    {label:"Include everything that touches the product",desc:"Corporate laptops, ticketing, the office network.",
+     apply:()=>{add({quality:-15});return "You just multiplied the evidence you owe. Every system in scope carries the full control set.";}}
+   ]})},
+
+ {phase:0,render:()=>({title:"Decide where the product runs",
+   text:"<p>Hosting decides how many controls you can inherit.</p>",
+   choices:[
+    {label:"An IaaS that's already FedRAMP authorized",desc:"Inherit physical and infrastructure controls. Hosting costs more.",
+     apply:()=>{add({month:1,spent:100,quality:15});return "Inheritance takes whole control families, like physical security, off your plate.";}},
+    {label:"Your own colocated hardware",desc:"Cheaper per unit, but every control is yours.",
+     apply:()=>{add({month:3,spent:250,quality:-5});
+       let m="You now own physical, environmental, and hardware controls end to end.";
+       if(s.path==="20x"){add({quality:-10});m+=" 20x is built around cloud-native services; self-run infrastructure is one of the cases where FedRAMP still points providers to Rev5.";}
+       return m;}}
+   ]})},
+
+ {phase:0,render:()=>({title:"Run a readiness gap assessment",
+   text:"<p>Find out how far you are from the baseline before an assessor does.</p>",
+   choices:[
+    {label:"Hire an advisory firm",desc:"$150k and two months.",
+     apply:()=>{add({month:2,spent:150,quality:15});return "Gaps surfaced early, while fixing them was still cheap.";}},
+    {label:"Do it in-house from the baseline",desc:"About $40k of staff time and four months.",
+     apply:()=>{add({month:4,spent:40,quality:3});return "Cheaper and slower, and you missed the gaps you didn't know to look for.";}}
+   ]})},
+
+ {phase:1,render:()=>{
+   const done=()=>{add({month:3,spent:300});generateFindings();};
+   return s.path==="rev5"?{title:"Build the authorization package",
+     text:"<p>Your sponsor and assessor need to see how every control is implemented.</p>",
+     choices:[
+      {label:"Write control narratives by hand in the templates",desc:"Five months of writing.",
+       apply:()=>{add({month:5,spent:80,quality:5});done();return "Accurate on the day it was written, stale by the next deploy. The 2026 Consolidated Rules are moving Rev5 away from static documents toward machine-readable data.";}},
+      {label:"Generate documentation from IaC and OSCAL",desc:"Tooling investment up front, three months.",
+       apply:()=>{add({month:3,spent:120,quality:12});done();return "Your documentation tracks the real system, and you're ahead on the machine-readable requirements coming to Rev5.";}}
+     ]}:{title:"Build your evidence pipeline",
+     text:"<p>20x reviewers expect Key Security Indicators backed by evidence from the running system.</p>",
+     choices:[
+      {label:"Wire KSI validations into CI/CD",desc:"Two months and $150k of engineering.",
+       apply:()=>{add({month:2,spent:150,quality:20});done();return "Every pipeline run now produces fresh evidence.";}},
+      {label:"Collect screenshots and exports",desc:"Fast and cheap.",
+       apply:()=>{add({month:1,spent:30,quality:-20});done();return "Point-in-time evidence is exactly what 20x was built to replace. Expect pushback.";}}
+     ]};
+ }},
+
+ {phase:2,render:()=>({title:"The 3PAO assessment is in",
+   text:`<p>Assessment took three months and $300k. The assessor found ${count("H")} high, ${count("M")} moderate, and ${count("L")} low findings.</p>${findingsTable(s.findings,false)}`,
+   choices:[
+    {label:"Fix highs and half the moderates before the report",desc:"Two more months and $80k.",
+     apply:()=>{add({month:2,spent:80,trust:10});
+       s.findings=s.findings.filter(f=>f.sev!=="H");
+       const mods=s.findings.filter(f=>f.sev==="M");
+       const drop=new Set(mods.slice(0,Math.ceil(mods.length/2)));
+       s.findings=s.findings.filter(f=>!drop.has(f));
+       return "Findings closed before the report don't follow you into authorization.";}},
+    {label:"Submit the report as-is with a remediation plan",desc:"No added time.",
+     apply:()=>{add({trust:-5});return count("H")?"Open high findings are a red flag for any authorizing official.":"Reasonable, since nothing high is open.";}}
+   ]})},
+
+ {phase:3,render:()=>{
+   if(s.authorized)return {stamp:true,title:"You're authorized to operate",
+     text:`<p>Authorization took ${s.atoMonth} months and $${s.spent}k. ${s.findings.length} open finding${s.findings.length===1?"":"s"} carry into continuous monitoring.</p>`,
+     choices:[{label:"Start continuous monitoring",apply:()=>{
+       s.cm.v=s.findings.map(f=>({id:"V-"+(++s.cm.id),sev:f.sev,name:f.name,age:0,late:false}));
+       spawn(3);return null;}}]};
+   if(count("H"))return {title:"The agency sends the package back",
+     text:`<p>The authorizing official won't accept risk with ${count("H")} open high finding${count("H")===1?"":"s"}.</p>`,
+     choices:[{label:"Fix the highs and resubmit",desc:"Two months and $60k.",
+       apply:()=>{add({month:2,spent:60,trust:-10});s.findings=s.findings.filter(f=>f.sev!=="H");
+         return {msg:"Highs closed. The delay cost you some goodwill with your sponsor.",stay:true};}}]};
+   return {title:"Agency review",
+     text:"<p>The authorizing official reviews your package and the remaining findings.</p>",
+     choices:[{label:"Request the authorization decision",
+       apply:()=>{const m=s.path==="rev5"?4:2;add({month:m});s.authorized=true;s.atoMonth=s.month;
+         return {msg:`Review took ${m} months.`,stay:true};}}]};
+ }},
+
+ {phase:4,render:()=>{
+   const cm=s.cm;
+   if(cm.m===3&&!cm.event)return {title:"A product team wants to ship an AI assistant",
+     text:"<p>It adds a new external service and a new data flow inside the boundary. That's a significant change.</p>",
+     choices:[
+      {label:"File a significant change request and wait",desc:"The feature waits for agency approval.",
+       apply:()=>{cm.event=true;add({trust:5});return {msg:"The agency approves after review. Slower, but your authorization stays clean.",stay:true};}},
+      {label:"Ship it now and tell the agency later",desc:"The feature goes out this month.",
+       apply:()=>{cm.event=true;cm.shipped++;add({trust:-30});return {msg:"The agency found out from a scan. Unreported significant changes are how providers lose their authorization.",stay:true};}}
+     ]};
+   return {title:`Monitoring month ${cm.m+1} of 6`,
+     text:`<p>Your team can close 4 items this month. Open items: ${cm.v.length}.</p>${findingsTable(cm.v,true)}`,
+     choices:[
+      {label:"Close highs first, then the oldest",apply:()=>tick("sev")},
+      {label:"Close the oldest items first",apply:()=>tick("age")},
+      {label:"Skip patching and ship the roadmap",desc:"Good for the business, bad for your due dates.",apply:()=>tick("skip")}
+     ]};
+ }},
+
+ {phase:5,render:()=>{
+   const cm=s.cm;
+   let score=100-Math.max(0,s.atoMonth-12)*3-cm.late*5-Math.max(0,(s.spent-900)/50)+(s.trust-60)/2+cm.shipped*2;
+   score=Math.round(clamp(score,0,100));
+   const verdict=s.trust<25?"The agency suspends use pending corrective action"
+     :score>=80?"Authorization in good standing":score>=55?"Authorized, with an uneasy agency":"Authorization at risk";
+   return {title:verdict,
+     text:`<dl class="results">
+       <dt>Score</dt><dd>${score} / 100</dd>
+       <dt>Path</dt><dd>${s.path==="rev5"?"Rev5":"FedRAMP 20x"}</dd>
+       <dt>Months to authorization</dt><dd>${s.atoMonth}</dd>
+       <dt>Spent before authorization</dt><dd>$${s.spent}k</dd>
+       <dt>Items closed in monitoring</dt><dd>${cm.fixed}</dd>
+       <dt>Items that went past due</dt><dd>${cm.late}</dd>
+       <dt>Months spent on roadmap</dt><dd>${cm.shipped}</dd>
+       <dt>Agency trust</dt><dd>${clamp(s.trust,0,100)}</dd></dl>`,
+     choices:[{label:"Run it again",apply:()=>{reset();return {msg:null,stay:true,noRender:true};}}]};
+ }}
+];
+
+function choose(idx){
+  const v=steps[s.i].render();
+  const r=v.choices[idx].apply();
+  if(r&&r.noRender)return;
+  const fb=typeof r==="string"?{msg:r,stay:false}:r;
+  if(!fb||!fb.msg){ if(!(fb&&fb.stay))s.i++; render(); return; }
+  s.fb={...fb,view:v}; render();
+  document.getElementById("next").focus();
+}
+function next(){ if(!s.fb.stay)s.i++; s.fb=null; render(); }
+
+function render(){
+  const step=steps[s.i], v=s.fb?s.fb.view:step.render(), ph=step.phase;
+  document.getElementById("track").innerHTML=PHASES.map((p,k)=>
+    `<li class="${k<ph?"done":k===ph?"now":""}"${k===ph?' aria-current="step"':""}>${p}</li>`).join("");
+  document.getElementById("meters").innerHTML=[
+    [s.month,"Months elapsed"],["$"+s.spent+"k","Spent to authorize"],
+    [clamp(s.quality,0,100),"Package quality"],[clamp(s.trust,0,100),"Agency trust"]
+  ].map(([b,l])=>`<div class="meter"><b>${b}</b><span>${l}</span></div>`).join("");
+  const phaseLabel=ph<5?`Phase ${ph+1}: ${PHASES[ph]}`:"Final report";
+  document.getElementById("sheet").innerHTML=
+    `<p class="phase">${phaseLabel}</p>${v.stamp?'<div class="stamp">AUTHORIZED</div>':""}<h2>${v.title}</h2>${v.text}`+
+    (s.fb?`<div class="feedback"><p>${s.fb.msg}</p></div><button class="primary" id="next">Continue</button>`
+     :`<div class="choices">${v.choices.map((c,k)=>
+        `<button class="choice" data-k="${k}"><strong>${c.label}</strong>${c.desc?`<small>${c.desc}</small>`:""}</button>`).join("")}</div>`);
+  const nb=document.getElementById("next"); if(nb)nb.onclick=next;
+  document.querySelectorAll(".choice").forEach(b=>b.onclick=()=>choose(+b.dataset.k));
+}
+reset();
+</script>
+</body>
+</html>
